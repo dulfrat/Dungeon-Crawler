@@ -1,275 +1,277 @@
+/*
+ * Proyecto: Dungeon Crawler en consola - "El Descenso al Nucleo"
+ * Fecha:            xx/11/2026
+ * Nombre y Apellido: Jesús Ochoa  /  Ariam Flores
+ * Cedula:            31.828.310  /  3
+ * Numero de Seccion: 3
+ */
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+
+#define MAX_ENEMIGOS 100   /* capacidad maxima del bestiario */
+#define MAX_OBJETOS  100   /* capacidad maxima del catalogo de objetos */
+#define MAX_MOCHILA   50   /* tope fisico del arreglo de la mochila */
 
 typedef char StringCorto[15];
 typedef char StringLargo[100];
 
 typedef struct {
-    //atributos
-    int nivel, hpActual, hpLimite, ataque, defensa,
-    //entorno
-    experiencia, pisoActual, pisosTotales, cuartoActual, cuartosPorPiso,
-    //inventario
-    espacioInventarioActual, espacioInventarioLimite, enemigosDerrotados, objetosConsumidos;
-} EstadoJuego;
+    StringLargo nombreObjeto;
+    int idObjeto, fuerzaValor;
+    StringCorto efecto;          /* Cura_Vida, Cura_Max, Buff_Daño, Buff_Defensa y esas cosas */
+} Objeto;
 
-typedef struct{
+typedef struct {
     int idEnemigo, vidaBase, danoBase, defensaBase;
     StringLargo nombreEnemigo;
     StringCorto tipo;
-}Entidad;
+} Entidad;
 
 typedef struct {
-    StringLargo nombreObjeto;
-    int fuerzaValor;
-    StringCorto tipo_efecto;
-}Objeto;                    // asignar objetos aleatoriamente de una lista de tipo objeto catalogo
-                             //calcular efecto del objeto al ejecutarse
-                             //eliminarlo si se elije soltar
-                             //que haya una lista tipo objeto del inventario
-                             //lo mismo con bestiario: calcular oponentes, y con ello pelea en general junto con estadoJuego
-                             
-                                                         
-// Módulo 1: Inicialización y Archivos Input
+    /* atributos */
+    int nivel, hpActual, hpLimite, ataque, defensa, experiencia;
+    /* entorno */
+    int pisoActual, pisosTotales, cuartoActual, cuartosPorPiso;
+    /* inventario: espacioInventarioActual = cantidad de objetos en la mochila */
+    int espacioInventarioActual, espacioInventarioLimite;
+    Objeto mochila[MAX_MOCHILA];
+    /* estadisticas para el highscore */
+    int enemigosDerrotados, objetosConsumidos, cuartosExplorados;
+} EstadoJuego;
+
+/* Modulo 1: Inicializacion y Archivos Input */
 void cargarConfiguracion(EstadoJuego *estado);
 void cargarBestiario(Entidad bestiario[], int *total_enemigos);
 void cargarObjetos(Objeto catalogo[], int *total_objetos);
-// Módulo 2: Lógica de Exploración y Navegación
-void avanzarCuarto(EstadoJuego *estado, Entidad bestiario[]);
-//int total_enemigos, Objeto catalogo[], int total_objetos);
-//int seleccionarEnemigo(Entidad bestiario[], int total_enemigos, int es_cuarto_final);
-// Módulo 3: Sistema de Combate y Progresión
-//void iniciarCombate(EstadoJuego *estado, Entidad *enemigo);
-//int calcularDano(int ataque_atacante, int defensa_defensor);
-//void otorgarRecompensa(EstadoJuego *estado, Objeto catalogo[], 
-//int total_objetos, char tipo_enemigo[]);
-//void verificarSubidaNivel(EstadoJuego *estado);
-// Módulo 4: Gestión de Recursos
-//void usarObjeto(EstadoJuego *estado);
-// Módulo 5: Persistencia y Output (Highscore)
-//void guardarPartida(EstadoJuego estado);
-//int cargarPartida(EstadoJuego *estado);
-//void registrarHighscore(EstadoJuego estado, bool victoria);
+int leerLineaNoVacia(FILE *archivo, char destino[], int tamano);
+
+/* Modulo 2: Logica de Exploracion y Navegacion */
+void avanzarCuarto(EstadoJuego *estado, Entidad bestiario[], int total_enemigos, Objeto catalogo[], int total_objetos);
+Entidad seleccionarEnemigo(Entidad bestiario[], int total_enemigos, int es_cuarto_final);
+int cuartosEnPiso(EstadoJuego *estado);
+void revisarProgresoPiso(EstadoJuego *estado, int totalCuartos);
+
+/* (Los demas modulos xdxd) */
 
 int main(){
-    int opcion, total_enemigos, total_objetos;
-
+    int total_enemigos, total_objetos;
     EstadoJuego jugador;
+    Entidad bestiario[MAX_ENEMIGOS];
+    Objeto catalogo[MAX_OBJETOS];
+
     cargarConfiguracion(&jugador);
+    cargarBestiario(bestiario, &total_enemigos);
+    cargarObjetos(catalogo, &total_objetos);
 
-    jugador.nivel = 1;
-    jugador.pisoActual = 1;
-    jugador.cuartoActual = 0;
-    jugador.enemigosDerrotados = 0;
-    jugador.objetosConsumidos = 0;
-    jugador.experiencia = 0;
-
-    Entidad enemigos[100];
-    Objeto objetos[100];
-    cargarBestiario(enemigos, &total_enemigos);
-    cargarObjetos(objetos, &total_objetos);
-    
-    FILE *registro = fopen("highscore.txt", "a"); 
-    FILE *partidaGuardada = fopen("partida_guardata.txt", "r");
-
-    // 1. Declarar la bandera del archivo guardado
-    int band_partidaGuard = (partidaGuardada != NULL);
-
-    // 2. Mostrar el menú en pantalla
-    printf("************\n");
-    printf("(1) empezar nueva partida\n");
-    if(band_partidaGuard){
-        printf("(2) cargar partida\n");
+    if(total_enemigos == 0 || total_objetos == 0){
+        printf("No se pudo continuar: catalogos vacios.\n");
+        return 1;
     }
-    printf("(3) highscores\n");
-    printf("(4) Salir\n");
-    printf("************\n");
 
-    // 3. Ciclo para leer la opcion elegida
-    do{ 
-        scanf("%d", &opcion);
-        
-        if(!band_partidaGuard && opcion == 2){ 
-            opcion = 0; // Invalidamos la opcion 2 si no hay partida
-        }
-        
-        switch (opcion){
-            case 1:
-                // iniciar nueva partida
-                break;
-            case 2:
-                // cargar partida
-                break;
-            case 3:
-                // highscores
-                break;
-            case 4:
-                // salir
-                break;
-            default:
-                while (getchar() != '\n');
-                printf("Ingresa el numero de alguna de las opciones que se muestra en el menu\n");
-        }
-    } while (opcion < 1 || opcion > 4); 
-
+    /* prueba: recorrer toda la mazmorra sin combate (se elimina despues) */
+    while(jugador.pisoActual <= jugador.pisosTotales){
+        avanzarCuarto(&jugador, bestiario, total_enemigos, catalogo, total_objetos);
+    }
     return 0;
 }
 
+/* ===================================================================
+ *  MODULO 1: INICIALIZACION Y ARCHIVOS INPUT
+ * =================================================================== */
+
 void cargarConfiguracion(EstadoJuego *estado){
     FILE *parametros = fopen("config.txt", "r");
+    int semilla, leidos;
+
     if(parametros == NULL){
         printf("Error al abrir el archivo de entrada 'config.txt'\n");
-    } else {
-        int semilla;
-        fscanf(parametros, "%d", &semilla);
-        srand(semilla);
-        fscanf(parametros, "%d", &((*estado).pisosTotales));
-        fscanf(parametros, "%d", &((*estado).cuartosPorPiso));
-        fscanf(parametros, "%d", &((*estado).hpLimite));
-        fscanf(parametros, "%d", &((*estado).ataque));
-        fscanf(parametros, "%d", &((*estado).defensa));
-        fscanf(parametros, "%d", &((*estado).espacioInventarioLimite));
-
-        //Inicializar los valores actuales basados en los límites leídos
-        (*estado).hpActual = (*estado).hpLimite;
-        (*estado).espacioInventarioActual = (*estado).espacioInventarioLimite;
-        fclose(parametros);
+        exit(1);
     }
 
-}
-    
-/*void cargarBestiario(Entidad bestiario[], int *total_enemigos){
-    int i = 0;
-    FILE *enemigos = fopen("bestiario.txt", "r");
-    if(enemigos == NULL){
-        printf("Error al abrir el archivo de entrada 'bestiario.txt'\n");
-    } else {
-        // Leemos el nombre usando fgets para que acepte espacios
-        // Suponiendo que el archivo intercala: 1 línea de nombre, 1 línea de stats
-        while(fgets(bestiario[i].nombreEnemigo, sizeof(bestiario[i].nombreEnemigo), enemigos) != NULL){
-            
-            // Quitamos el salto de línea '\n' al final que deja fgets si lo hubiera
-            size_t len = strlen(bestiario[i].nombreEnemigo);
-            if (len > 0 && bestiario[i].nombreEnemigo[len - 1] == '\n') {
-                bestiario[i].nombreEnemigo[len - 1] = '\0';
-            }
+    leidos = fscanf(parametros, "%d %d %d %d %d %d %d",
+        &semilla,
+        &((*estado).pisosTotales),
+        &((*estado).cuartosPorPiso),
+        &((*estado).hpLimite),
+        &((*estado).ataque),
+        &((*estado).defensa),
+        &((*estado).espacioInventarioLimite));
+    fclose(parametros);
 
-            // Leemos la siguiente línea con los números y el tipo
-            if(fscanf(enemigos, "%d %d %d %d %s", 
-                &(bestiario[i].idEnemigo), 
-                &(bestiario[i].vidaBase), 
-                &(bestiario[i].danoBase), 
-                &(bestiario[i].defensaBase), 
-                bestiario[i].tipo) == 5) {
-                printf(" %s %d %d %d %d %s", bestiario[i].nombreEnemigo, (bestiario[i].idEnemigo), (bestiario[i].vidaBase), (bestiario[i].danoBase), (bestiario[i].defensaBase), bestiario[i].tipo);
-                i++; // Enemigo cargado con éxito
-            } else {
-                break; // Si falla la lectura de stats
-            }
+    if(leidos != 7){
+        printf("Error: 'config.txt' incompleto o con formato invalido\n");
+        exit(1);
+    }
+    if((*estado).pisosTotales < 1 || (*estado).cuartosPorPiso < 2 ||
+       (*estado).hpLimite < 1 || (*estado).espacioInventarioLimite < 1){
+        printf("Error: valores invalidos en 'config.txt'\n");
+        exit(1);
+    }
+    if((*estado).espacioInventarioLimite > MAX_MOCHILA){
+        (*estado).espacioInventarioLimite = MAX_MOCHILA;
+    }
+
+    srand(semilla);
+
+    /* valores de inicio de una partida nueva */
+    (*estado).nivel = 1;
+    (*estado).experiencia = 0;
+    (*estado).hpActual = (*estado).hpLimite;
+    (*estado).pisoActual = 1;
+    (*estado).cuartoActual = 0;
+    (*estado).espacioInventarioActual = 0;
+    (*estado).enemigosDerrotados = 0;
+    (*estado).objetosConsumidos = 0;
+    (*estado).cuartosExplorados = 0;
+}
+
+// lee la siguiente line no vacia del archivo y le quita el salto de linea
+int leerLineaNoVacia(FILE *archivo, char destino[], int tamano){
+    int leida = 0;
+
+    while(!leida && fgets(destino, tamano, archivo) != NULL){
+        destino[strcspn(destino, "\r\n")] = '\0';
+        if(strlen(destino) > 0){
+            leida = 1;
         }
-        *total_enemigos = i;
-        fclose(enemigos);
-    }  
-}*/
+    }
+    return leida;
+}
 
 void cargarBestiario(Entidad bestiario[], int *total_enemigos){
+    FILE *archivo = fopen("bestiario.txt", "r");
     int i = 0;
-    FILE *enemigos = fopen("bestiario.txt", "r");
-    if(enemigos == NULL){
+
+    if(archivo == NULL){
         printf("Error al abrir el archivo de entrada 'bestiario.txt'\n");
         *total_enemigos = 0;
-    } else {
-        // fgets lee toda la línea del nombre (con espacios incluidos)
-        while(fgets(bestiario[i].nombreEnemigo, sizeof(bestiario[i].nombreEnemigo), enemigos) != NULL){
-            
-            // quita el salto de línea o retorno de carro del final
-            bestiario[i].nombreEnemigo[strcspn(bestiario[i].nombreEnemigo, "\r\n")] = '\0';
+        return;
+    }
 
-            // si hay una línea vacía por accidente la deja en visto
-            if (strlen(bestiario[i].nombreEnemigo) == 0) {
-                continue;
-            }
-
-            // las demas estadísticas en la línea de abajo
-            if(fscanf(enemigos, "%d %d %d %d %s", 
-                &bestiario[i].idEnemigo, 
-                &bestiario[i].vidaBase, 
-                &bestiario[i].danoBase, 
-                &bestiario[i].defensaBase, 
-                bestiario[i].tipo) == 5) {
-                
-                // printeada historica luego la quitamos
-                printf("Enemigo: [%s] | ID: %d | Vida: %d | Daño: %d | Def: %d | Tipo: %s\n", 
-                    bestiario[i].nombreEnemigo, 
-                    bestiario[i].idEnemigo, 
-                    bestiario[i].vidaBase, 
-                    bestiario[i].danoBase, 
-                    bestiario[i].defensaBase, 
-                    bestiario[i].tipo);
-                i++;
-            } else {
-                break; 
-            }
-        }
-        *total_enemigos = i;
-        fclose(enemigos);
-    }  
+    while(i < MAX_ENEMIGOS &&
+          leerLineaNoVacia(archivo, bestiario[i].nombreEnemigo, sizeof(bestiario[i].nombreEnemigo)) &&
+          fscanf(archivo, "%d %d %d %d %14s",
+            &(bestiario[i].idEnemigo),
+            &(bestiario[i].vidaBase),
+            &(bestiario[i].danoBase),
+            &(bestiario[i].defensaBase),
+            bestiario[i].tipo) == 5){
+        i++;
+    }
+    *total_enemigos = i;
+    fclose(archivo);
 }
+
 void cargarObjetos(Objeto catalogo[], int *total_objetos){
+    FILE *archivo = fopen("objetos.txt", "r");
     int i = 0;
-    FILE *objetos = fopen("objetos.txt", "r");
-    if(objetos == NULL){
+
+    if(archivo == NULL){
         printf("Error al abrir el archivo de entrada 'objetos.txt'\n");
-    } else {
-        while(fscanf(objetos, "%s %d %s",  (catalogo[i].nombreObjeto), &(catalogo[i].fuerzaValor), (catalogo[i].tipo_efecto)) == 3 ){
-        i ++;
-        }
-        *total_objetos = i;
-        fclose(objetos);
-    }  
-}
-void cargarBestiario(Entidad bestiario[], int *total_enemigos){
-    int i = 0;
-    FILE *enemigos = fopen("bestiario.txt", "r");
-    if(enemigos == NULL){
-        printf("Error al abrir el archivo de entrada 'bestiario.txt'\n");
-        *total_enemigos = 0;
-    } else {
-        // fgets lee toda la línea del nombre (con espacios incluidos)
-        while(fgets(bestiario[i].nombreEnemigo, sizeof(bestiario[i].nombreEnemigo), enemigos) != NULL){
-            
-            // quita el salto de línea o retorno de carro del final
-            bestiario[i].nombreEnemigo[strcspn(bestiario[i].nombreEnemigo, "\r\n")] = '\0';
+        *total_objetos = 0;
+        return;
+    }
 
-            // si hay una línea vacía por accidente la deja en visto
-            if (strlen(bestiario[i].nombreEnemigo) == 0) {
-                continue;
-            }
-
-            // las demas estadísticas en la línea de abajo
-            if(fscanf(enemigos, "%d %d %d %d %s", &(catalogo[i].fuerzaValor),(catalogo[i].tipo_efecto)) == 2) {
-                
-                // printeada historica luego la quitamos
-                printf("Enemigo: [%s] | ID: %d | Vida: %d | Daño: %d | Def: %d | Tipo: %s\n", 
-                    bestiario[i].nombreEnemigo, 
-                    bestiario[i].idEnemigo, 
-                    bestiario[i].vidaBase, 
-                    bestiario[i].danoBase, 
-                    bestiario[i].defensaBase, 
-                    bestiario[i].tipo);
-                i++;
-            } else {
-                break; 
-            }
-        }
-        *total_enemigos = i;
-        fclose(enemigos);
-    }  
+    while(i < MAX_OBJETOS &&
+          leerLineaNoVacia(archivo, catalogo[i].nombreObjeto,
+                           sizeof(catalogo[i].nombreObjeto)) &&
+          fscanf(archivo, "%d %d %14s",
+            &(catalogo[i].idObjeto),
+            &(catalogo[i].fuerzaValor),
+            catalogo[i].efecto) == 3){
+        i++;
+    }
+    *total_objetos = i;
+    fclose(archivo);
 }
 
+/* ===================================================================
+ *  MODULO 2: LOGICA DE EXPLORACION Y NAVEGACION
+ * =================================================================== */
 
+/*  piso 1: cuartosPorPiso - 1
+    ultimo piso: cuartosPorPiso + 1 (cuarto extra del encuentro final)
+    pisos intermedios: cuartosPorPiso
+    si solo hay un piso, es a la vez el primero y el ultimo (-1 y +1) y queda con la cantidad base. */
+int cuartosEnPiso(EstadoJuego *estado){
+    int cuartos = (*estado).cuartosPorPiso;
 
-void avanzarCuarto(EstadoJuego *estado, Entidad bestiario[]){
+    if((*estado).pisoActual == 1){
+        cuartos = cuartos - 1;
+    }
+    if((*estado).pisoActual == (*estado).pisosTotales){
+        cuartos = cuartos + 1;
+    }
+    return cuartos;
+}
 
+Entidad seleccionarEnemigo(Entidad bestiario[], int total_enemigos, int es_cuarto_final){
+    int indicesValidos[MAX_ENEMIGOS],
+    contador = 0, i;
+
+    for(i = 0; i < total_enemigos; i++){
+        if(es_cuarto_final){
+            if(strcmp(bestiario[i].tipo, "Raro") == 0){
+                indicesValidos[contador] = i;
+                contador++;
+            }
+        } else {
+            if(strcmp(bestiario[i].tipo, "Comun") == 0){
+                indicesValidos[contador] = i;
+                contador++;
+            }
+        }
+    }
+
+    if(contador == 0){
+        return bestiario[rand() % total_enemigos];
+    }
+    return bestiario[indicesValidos[rand() % contador]];
+}
+
+void avanzarCuarto(EstadoJuego *estado, Entidad bestiario[], int total_enemigos, Objeto catalogo[], int total_objetos){
+    int totalCuartos = cuartosEnPiso(estado),
+    es_cuarto_final;
+    Entidad enemigo;
+
+    (*estado).cuartoActual++;
+    (*estado).cuartosExplorados++;
+    es_cuarto_final = ((*estado).cuartoActual == totalCuartos);
+
+    printf("\n==================================================\n");
+    printf(" Piso %d de %d | Cuarto %d de %d\n",
+        (*estado).pisoActual, (*estado).pisosTotales,
+        (*estado).cuartoActual, totalCuartos);
+    printf("==================================================\n");
+
+    enemigo = seleccionarEnemigo(bestiario, total_enemigos, es_cuarto_final);
+
+    if(es_cuarto_final){
+        printf(" Un enemigo RARO bloquea la salida del piso!\n");
+    } else {
+        printf(" Un enemigo ha aparecido en el camino!\n");
+    }
+    printf(" Enemigo: %s | Tipo: %s | Vida: %d | Dano: %d | Defensa: %d\n",
+        enemigo.nombreEnemigo, enemigo.tipo, enemigo.vidaBase, enemigo.danoBase, enemigo.defensaBase);
+
+    (void)catalogo;
+    (void)total_objetos;
+
+    revisarProgresoPiso(estado, totalCuartos);
+}
+
+void revisarProgresoPiso(EstadoJuego *estado, int totalCuartos){
+    if((*estado).cuartoActual >= totalCuartos){
+        printf("\n Has limpiado por completo el piso %d!\n", (*estado).pisoActual);
+        (*estado).pisoActual++;
+        (*estado).cuartoActual = 0;
+
+        if((*estado).pisoActual > (*estado).pisosTotales){
+            printf("\n FELICIDADES! Has superado el ultimo cuarto y conquistado el Nucleo. VICTORIA!\n");
+        } else {
+            printf(" Descendiendo al piso %d...\n", (*estado).pisoActual);
+        }
+    }
 }

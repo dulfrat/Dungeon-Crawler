@@ -1,7 +1,10 @@
 Pocion menor
-1 1 25 Cura_Vida
+1 25 Cura_Vida
+Pocion Mayor
+2 50 Cura_Vida
 Cristal Fuerza
-3 Buff_Daño
-Placas_Chatarra 2 Buff_Defensa
-Elixir_Nucleo 100 Cura_Max
-Pocion_Mayor 50 Cura_Vida
+3 3 Buff_Daño
+Placas Chatarra
+4 2 Buff_Defensa
+Elixir Nucleo
+5 100 Cura_Max
