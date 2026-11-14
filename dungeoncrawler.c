@@ -1,11 +1,15 @@
-/*Proyecto: Dungeon Crawler en consola - "El Descenso al Nucleo" */
+/* Proyecto: Dungeon Crawler en consola - "El Descenso al Nucleo"
+ * Fecha:            13/11/2026
+ * Nombre y Apellido: Jesús Ochoa / Ariam Flores
+ * Cedula: 31.828.310 / 31.747.735
+ * Numero de Seccion: 3 */
 
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
-/* ===================================================================
- *  CONSTANTES Y TIPOS
+/* =================================================================== *
+    CONSTANTES Y TIPOS
  * =================================================================== */
 
 #define MAX_ENEMIGOS 100   /* capacidad maxima del bestiario */
@@ -13,21 +17,30 @@
 #define MAX_MOCHILA   50   /* tope fisico del arreglo de la mochila */
 
 /* Archivos de salida / persistencia */
-#define ARCHIVO_PARTIDA    "partida_guardata.txt"   /* nombre tal cual lo pide el menu del enunciado */
+#define ARCHIVO_PARTIDA    "partida_guardata.txt"
 #define ARCHIVO_HIGHSCORE  "highscore.txt"
-#define MAX_LINEA          300   /* tamano maximo de una linea leida del highscore */
+#define MAX_LINEA          300   /* tamaño maximo de una linea leida del highscore */
 #define MAX_VICTORIAS_MOSTRAR 5  /* cantidad de victorias que muestra el menu de highscores */
 
 /* Parametros de balance del juego */
 #define PROB_DROP_COMUN   40   /* % de que un enemigo Comun suelte un objeto */
-#define XP_BASE_NIVEL     50   /* XP para pasar del nivel N al N+1 = 50 * N */
+#define XP_BASE_NIVEL     40   /* XP para pasar del nivel N al N+1 = 50 * N */
 #define BONO_HP           10   /* HP maximo que se gana por nivel */
-#define BONO_ATAQUE        2   /* ataque que se gana por nivel */
-#define BONO_DEFENSA       1   /* defensa que se gana por nivel */
+#define BONO_ATAQUE        5   /* ataque que se gana por nivel */
+#define BONO_DEFENSA       4   /* defensa que se gana por nivel */
 #define HUIDA_BASE        50   /* % base de huir cuando ataque enemigo = defensa jugador */
 #define HUIDA_POR_PUNTO    3   /* % que suma/resta cada punto de diferencia */
 #define HUIDA_MIN         10   /* % minimo de huir */
 #define HUIDA_MAX         90   /* % maximo de huir */
+#define CRITICO_UNA_DE     8   /* golpe critico: 1 de cada 8 (12.5%) */
+#define CRITICO_NUM        3   /* el critico multiplica el daño por 3/2 = x1.5 */
+#define CRITICO_DEN        2
+#define ESQUIVA_UNA_DE    16   /* esquives/evita el ataqu: 1 de cada 16 (6.25%) */
+
+/* resultados de como puede terminar una partida */
+#define RESULTADO_DERROTA     0
+#define RESULTADO_VICTORIA    1
+#define RESULTADO_SUSPENDIDA  2   /* el jugador guardo y salio */
 
 typedef char StringCorto[15];
 typedef char StringLargo[100];
@@ -36,7 +49,7 @@ typedef char StringLargo[100];
 typedef struct {
     StringLargo nombreObjeto;
     int idObjeto, fuerzaValor;
-    StringCorto efecto;          /* Cura_Vida, Cura_Max, Buff_Daño, Buff_Defensa */
+    StringCorto efecto;
 } Objeto;
 
 /* Enemigo del bestiario */
@@ -46,16 +59,14 @@ typedef struct {
     StringCorto tipo;            /* "Comun" o "Raro" */
 } Entidad;
 
-/* Estado completo de la partida (todo lo que se guarda en disco).
- * La mochila vive aqui dentro para que guardarPartida y usarObjeto
- * (que solo reciben EstadoJuego) puedan acceder a ella. */
+/* Estado completo de la partida (todo lo que se guarda en disco). La mochila vive aqui dentro para que guardarPartida y usarObjeto */
 typedef struct {
     /* atributos */
-    int nivel, hpActual, hpLimite, ataque, defensa, experiencia;
+    int nivel, hpActual, hpLimite, ataque, defensa, experiencia,
     /* entorno */
-    int pisoActual, pisosTotales, cuartoActual, cuartosPorPiso;
+    pisoActual, pisosTotales, cuartoActual, cuartosPorPiso,
     /* inventario: espacioInventarioActual = cantidad de objetos en la mochila */
-    int espacioInventarioActual, espacioInventarioLimite;
+    espacioInventarioActual, espacioInventarioLimite;
     Objeto mochila[MAX_MOCHILA];
     /* estadisticas para el highscore */
     int enemigosDerrotados, objetosConsumidos, cuartosExplorados;
@@ -71,7 +82,7 @@ typedef struct {
 } Estadisticas;
 
 /* ===================================================================
- *  PROTOTIPOS
+   PROTOTIPOS
  * =================================================================== */
 
 /* Modulo 1: Inicializacion y Archivos Input */
@@ -81,8 +92,7 @@ void cargarObjetos(Objeto catalogo[], int *total_objetos);
 int leerLineaNoVacia(FILE *archivo, char destino[], int tamano);
 
 /* Modulo 2: Logica de Exploracion y Navegacion */
-void avanzarCuarto(EstadoJuego *estado, Entidad bestiario[], int total_enemigos,
-                   Objeto catalogo[], int total_objetos);
+void avanzarCuarto(EstadoJuego *estado, Entidad bestiario[], int total_enemigos, Objeto catalogo[], int total_objetos);
 Entidad seleccionarEnemigo(Entidad bestiario[], int total_enemigos, int es_cuarto_final);
 int cuartosEnPiso(EstadoJuego *estado);
 void revisarProgresoPiso(EstadoJuego *estado, int totalCuartos);
@@ -90,8 +100,9 @@ void revisarProgresoPiso(EstadoJuego *estado, int totalCuartos);
 /* Modulo 3: Sistema de Combate y Progresion */
 void iniciarCombate(EstadoJuego *estado, Entidad *enemigo);
 int calcularDano(int ataque_atacante, int defensa_defensor);
-void otorgarRecompensa(EstadoJuego *estado, Objeto catalogo[], int total_objetos,
-                       char tipo_enemigo[]);
+int sucedeUnaDe(int n);
+int calcularGolpe(int ataque_atacante, int defensa_defensor, int *esquivado, int *critico);
+void otorgarRecompensa(EstadoJuego *estado, Objeto catalogo[], int total_objetos, char tipo_enemigo[]);
 void verificarSubidaNivel(EstadoJuego *estado);
 int umbralExperiencia(int nivel);
 int calcularExperiencia(Entidad enemigo);
@@ -119,41 +130,62 @@ void mostrarHighscores(void);
 void pedirNombre(char destino[], int tamano);
 int leerRegistroHighscore(char linea[], Estadisticas *registro);
 
-/* (El Bloque 6 agrega los menus y el main definitivo) */
+/* Modulo 6: Menus y flujo del juego */
+int elegirOpcionMenuPrincipal(void);
+void mostrarEstado(EstadoJuego *estado);
+int jugarPartida(EstadoJuego *estado, Entidad bestiario[], int total_enemigos, Objeto catalogo[], int total_objetos);
+void terminarPartida(EstadoJuego *estado, int resultado);
 
-/* ===================================================================
- *  MAIN (temporal: solo para probar el Bloque 5)
- * =================================================================== */
+
 
 int main(){
-    int total_enemigos, total_objetos, victoria;
+    int total_enemigos, total_objetos, opcion, resultado;
+    int salir = 0;
     EstadoJuego jugador;
     Entidad bestiario[MAX_ENEMIGOS];
     Objeto catalogo[MAX_OBJETOS];
 
-    cargarConfiguracion(&jugador);
     cargarBestiario(bestiario, &total_enemigos);
     cargarObjetos(catalogo, &total_objetos);
 
     if(total_enemigos == 0 || total_objetos == 0){
-        printf("No se pudo continuar: catalogos vacios.\n");
+        printf("No se puede iniciar el juego sin enemigos y objetos cargados.\n");
         return 1;
     }
 
-    /* prueba: avanzar cuartos hasta ganar o morir (se elimina despues) */
-    while(jugador.pisoActual <= jugador.pisosTotales && jugador.hpActual > 0){
-        avanzarCuarto(&jugador, bestiario, total_enemigos, catalogo, total_objetos);
-    }
+    printf("\n##################################################\n");
+    printf("#          EL DESCENSO AL NUCLEO                 #\n");
+    printf("##################################################\n");
 
-    victoria = (jugador.hpActual > 0);
-    if(victoria){
-        printf("\n[RESULTADO] VICTORIA\n");
-    } else {
-        printf("\n[RESULTADO] DERROTA\n");
+    while(!salir){
+        opcion = elegirOpcionMenuPrincipal();
+
+        if(opcion == 1){
+            /* nueva partida: la configuracion fija la semilla y los valores iniciales */
+            if(existePartidaGuardada()){
+                printf("\n Aviso: ya hay una partida guardada; se reemplaza si guardas\n");
+                printf(" o se borra cuando esta partida termine.\n");
+            }
+            cargarConfiguracion(&jugador);
+            resultado = jugarPartida(&jugador, bestiario, total_enemigos, catalogo, total_objetos);
+            terminarPartida(&jugador, resultado);
+        } else if(opcion == 2){
+            /* cargar partida: la configuracion fija la semilla y luego el guardado reemplaza el estado */
+            cargarConfiguracion(&jugador);
+            if(cargarPartida(&jugador)){
+                printf("\n Partida cargada. Continuas donde la dejaste.\n");
+                resultado = jugarPartida(&jugador, bestiario, total_enemigos, catalogo, total_objetos);
+                terminarPartida(&jugador, resultado);
+            } else {
+                printf("\n No se pudo cargar la partida: el archivo esta danado.\n");
+            }
+        } else if(opcion == 3){
+            mostrarHighscores();
+        } else {
+            printf("\n Hasta pronto!\n");
+            salir = 1;
+        }
     }
-    registrarHighscore(jugador, victoria);
-    borrarPartidaGuardada();
-    mostrarHighscores();
     return 0;
 }
 
@@ -161,11 +193,8 @@ int main(){
  *  MODULO 1: INICIALIZACION Y ARCHIVOS INPUT
  * =================================================================== */
 
-/* Lee config.txt (semilla, pisos, cuartos base, HP, ataque, defensa y
- * tamano de mochila), inicializa la semilla aleatoria y deja el estado
- * listo para una partida nueva (nivel 1, piso 1, cuarto 0).
- * El estado se recibe por referencia. Si el archivo falta o es
- * invalido, termina el programa. */
+/* Lee config.txt (semilla, pisos, cuartos base, HP, ataque, defensa y tamano de mochila), inicializa la semilla aleatoria y deja el estado
+listo para una partida nueva (nivel 1, piso 1, cuarto 0). El estado se recibe por referencia. Si el archivo falta o esinvalido, termina el programa. */
 void cargarConfiguracion(EstadoJuego *estado){
     FILE *parametros = fopen("config.txt", "r");
     int semilla, leidos;
@@ -213,9 +242,8 @@ void cargarConfiguracion(EstadoJuego *estado){
     (*estado).cuartosExplorados = 0;
 }
 
-/* Lee la siguiente linea no vacia del archivo y le quita el salto de
- * linea. Permite leer nombres con espacios (ej. "Rata Ruinas").
- * Devuelve 1 si leyo una linea y 0 si llego al fin del archivo. */
+/* lee la siguiente linea no vacia del archivo y le quita el salto de linea. Permite leer nombres con espacios (ej. "Rata Ruinas").
+Devuelve 1 si leyo una linea y 0 si llego al fin del archivo. */
 int leerLineaNoVacia(FILE *archivo, char destino[], int tamano){
     int leida = 0;
 
@@ -229,10 +257,10 @@ int leerLineaNoVacia(FILE *archivo, char destino[], int tamano){
     return leida;
 }
 
-/* Lee bestiario.txt. Cada enemigo ocupa dos lineas:
+/*Lee bestiario.txt. Cada enemigo ocupa dos lineas:
  *   linea 1: Nombre (puede tener espacios)
  *   linea 2: [ID] [Vida] [Dano] [Defensa] [Tipo]
- * La cantidad de enemigos leidos se devuelve por referencia. */
+La cantidad de enemigos leidos se devuelve por referencia. */
 void cargarBestiario(Entidad bestiario[], int *total_enemigos){
     FILE *archivo = fopen("bestiario.txt", "r");
     int i = 0;
@@ -258,10 +286,10 @@ void cargarBestiario(Entidad bestiario[], int *total_enemigos){
     fclose(archivo);
 }
 
-/* Lee objetos.txt. Cada objeto ocupa dos lineas:
- *   linea 1: Nombre (puede tener espacios)
- *   linea 2: [ID] [Fuerza/Valor] [Tipo_Efecto]
- * La cantidad de objetos leidos se devuelve por referencia. */
+/*Lee objetos.txt. Cada objeto ocupa dos lineas:
+ * linea 1: Nombre (puede tener espacios)
+ * linea 2: [ID] [Fuerza/Valor] [Tipo_Efecto]
+La cantidad de objetos leidos se devuelve por referencia. */
 void cargarObjetos(Objeto catalogo[], int *total_objetos){
     FILE *archivo = fopen("objetos.txt", "r");
     int i = 0;
@@ -286,15 +314,14 @@ void cargarObjetos(Objeto catalogo[], int *total_objetos){
 }
 
 /* ===================================================================
- *  MODULO 2: LOGICA DE EXPLORACION Y NAVEGACION
+    MODULO 2: LOGICA DE EXPLORACION Y NAVEGACION
  * =================================================================== */
 
-/* Devuelve cuantos cuartos tiene el piso actual:
- *   - piso 1: cuartosPorPiso - 1
- *   - ultimo piso: cuartosPorPiso + 1 (cuarto extra del encuentro final)
- *   - pisos intermedios: cuartosPorPiso
- * Si solo hay un piso, es a la vez el primero y el ultimo (-1 y +1),
- * y queda con la cantidad base. */
+/*Devuelve cuantos cuartos tiene el piso actual:
+ - piso 1: cuartosPorPiso - 1
+ - ultimo piso: cuartosPorPiso + 1 (cuarto extra del encuentro final)
+ - pisos intermedios: cuartosPorPiso
+ Si solo hay un piso, es a la vez el primero y el ultimo (-1 y +1), y queda con la cantidad base. */
 int cuartosEnPiso(EstadoJuego *estado){
     int cuartos = (*estado).cuartosPorPiso;
 
@@ -307,11 +334,9 @@ int cuartosEnPiso(EstadoJuego *estado){
     return cuartos;
 }
 
-/* Elige al azar un enemigo del bestiario: de tipo Raro si es el cuarto
- * final del piso y de tipo Comun en los demas cuartos. Devuelve una
- * copia del enemigo, asi el combate puede modificar su vida sin alterar
- * el bestiario. Si no existe ningun enemigo del tipo buscado, elige
- * cualquiera para que el juego no se bloquee. */
+/* Elige al azar un enemigo del bestiario: de tipo Raro si es el cuarto final del piso y de tipo Comun en los demas cuartos.
+Devuelve una copia del enemigo, asi el combate puede modificar su vida sin alterar el bestiario. Si no existe ningun enemigo del tipo buscado,
+elige cualquiera para que el juego no se bloquee. */
 Entidad seleccionarEnemigo(Entidad bestiario[], int total_enemigos, int es_cuarto_final){
     int indicesValidos[MAX_ENEMIGOS];
     int contador = 0;
@@ -337,15 +362,11 @@ Entidad seleccionarEnemigo(Entidad bestiario[], int total_enemigos, int es_cuart
     return bestiario[indicesValidos[rand() % contador]];
 }
 
-/* Avanza al siguiente cuarto del piso actual, genera su enemigo y
- * lanza el combate. Segun el resultado:
- *   - el jugador murio: no se hace nada mas (derrota);
- *   - el enemigo murio: se otorgan XP y botin, se cuenta el cuarto como
- *     explorado y se revisa si el piso quedo completo;
- *   - el jugador huyo: el cuarto NO se supera, se retrocede el contador
- *     para que siga pendiente (asi no se puede saltar al jefe Raro). */
-void avanzarCuarto(EstadoJuego *estado, Entidad bestiario[], int total_enemigos,
-                   Objeto catalogo[], int total_objetos){
+/* Avanza al siguiente cuarto del piso actual, genera su enemigo y lanza el combate. Segun el resultado:
+ - el jugador murio: no se hace nada mas (derrota);
+ - el enemigo murio: se otorgan XP y botin, se cuenta el cuarto como explorado y se revisa si el piso quedo completo;
+ - el jugador huyo: el cuarto NO se supera, se retrocede el contador para que siga pendiente. */
+void avanzarCuarto(EstadoJuego *estado, Entidad bestiario[], int total_enemigos, Objeto catalogo[], int total_objetos){
     int totalCuartos = cuartosEnPiso(estado);
     int es_cuarto_final;
     Entidad enemigo, original;
@@ -388,9 +409,8 @@ void avanzarCuarto(EstadoJuego *estado, Entidad bestiario[], int total_enemigos,
     }
 }
 
-/* Si ya se completaron todos los cuartos del piso, desciende al
- * siguiente. Si no quedan mas pisos, anuncia la victoria (el estado
- * queda con pisoActual > pisosTotales). */
+/* Si ya se completaron todos los cuartos del piso, desciende al siguiente. Si no quedan mas pisos, anuncia la victoria
+(el estado queda con pisoActual > pisosTotales). */
 void revisarProgresoPiso(EstadoJuego *estado, int totalCuartos){
     if((*estado).cuartoActual >= totalCuartos){
         printf("\n Has limpiado por completo el piso %d!\n", (*estado).pisoActual);
@@ -406,12 +426,11 @@ void revisarProgresoPiso(EstadoJuego *estado, int totalCuartos){
 }
 
 /* ===================================================================
- *  UTILIDAD DE ENTRADA
- * =================================================================== */
+    UTILIDAD DE ENTRADA
+   =================================================================== */
 
-/* Descarta lo que quede de la linea actual en la entrada (hasta el salto
- * de linea o el fin de archivo). Evita que sobras de un scanf se lean
- * como si fueran la siguiente respuesta. */
+/* Descarta lo que quede de la linea actual en la entrada (hasta el salto de linea o el fin de archivo). 
+Evita que sobras de un scanf se lean como si fueran la siguiente respuesta. */
 void descartarLinea(void){
     int c;
 
@@ -420,9 +439,8 @@ void descartarLinea(void){
     } while(c != '\n' && c != EOF);
 }
 
-/* Pide un entero por consola hasta que este entre minimo y maximo
- * (inclusive). Ignora entradas que no sean numeros. Si la entrada se
- * termina (fin de archivo) cierra el programa para no ciclar. */
+/* Pide un entero por consola hasta que este entre minimo y maximo (inclusive). Ignora entradas que no sean numeros.
+Si la entrada se termina (fin de archivo) cierra el programa para no ciclar. */
 int leerOpcion(int minimo, int maximo){
     int opcion = minimo - 1;
     int leidos;
@@ -450,7 +468,7 @@ int leerOpcion(int minimo, int maximo){
  *  MODULO 3: SISTEMA DE COMBATE Y PROGRESION
  * =================================================================== */
 
-/* Dano de un golpe: ataque menos defensa, con minimo de 1 punto. */
+/* Daño de un golpe normal: ataque menos defensa, con minimo de 1 punto. */
 int calcularDano(int ataque_atacante, int defensa_defensor){
     int dano = ataque_atacante - defensa_defensor;
 
@@ -460,10 +478,33 @@ int calcularDano(int ataque_atacante, int defensa_defensor){
     return dano;
 }
 
-/* Probabilidad (en %) de huir con exito. Parte de HUIDA_BASE y sube
- * o baja HUIDA_POR_PUNTO por cada punto que la defensa del jugador
- * supere (o quede por debajo) del ataque del enemigo. Se limita al
- * rango [HUIDA_MIN, HUIDA_MAX]. */
+/* Devuelve 1 con probabilidad de 1 entre n y 0 en caso contrario. */
+int sucedeUnaDe(int n){
+    return (rand() % n) == 0;
+}
+
+/* Resuelve un golpe completo. Primero el defensor puede esquivarlo (1 de cada ESQUIVA_UNA_DE): en ese caso no hay dano. Si no lo esquiva,
+se calcula el dano normal y el atacante puede acertar un critico (1 de cada CRITICO_UNA_DE) que lo multiplica por x1.5. El critico se
+redondea hacia arriba para que siempre se note (1 pasa a 2). Devuelve el dano y avisa por referencia si hubo esquiva o critico. 
+Sirve igual para el jugador y para el enemigo. */
+int calcularGolpe(int ataque_atacante, int defensa_defensor, int *esquivado, int *critico){
+    int dano = 0;
+
+    *esquivado = sucedeUnaDe(ESQUIVA_UNA_DE);
+    *critico = 0;
+
+    if(!(*esquivado)){
+        dano = calcularDano(ataque_atacante, defensa_defensor);
+        *critico = sucedeUnaDe(CRITICO_UNA_DE);
+        if(*critico){
+            dano = (dano * CRITICO_NUM + CRITICO_DEN - 1) / CRITICO_DEN;
+        }
+    }
+    return dano;
+}
+
+/* Probablidad (en %) de huir con exito. Parte de HUIDA_BASE y sube o baja HUIDA_POR_PUNTO por cada punto que la defensa del jugador
+supere (o quede por debajo) del ataque del enemigo. Se limita al rango [HUIDA_MIN, HUIDA_MAX]. */
 int calcularProbabilidadHuida(int ataque_enemigo, int defensa_jugador){
     int prob = HUIDA_BASE + HUIDA_POR_PUNTO * (defensa_jugador - ataque_enemigo);
 
@@ -490,26 +531,31 @@ int intentarHuir(EstadoJuego *estado, Entidad *enemigo){
     return exito;
 }
 
-/* El enemigo ataca al jugador. El HP del jugador nunca baja de 0. */
+/* el enemigo ataca al jugador (puede fallar por esquiva o acertar un critico). El HP del jugador nunca baja de 0. */
 void turnoEnemigo(EstadoJuego *estado, Entidad *enemigo){
-    int dano = calcularDano((*enemigo).danoBase, (*estado).defensa);
+    int esquivado, critico;
+    int dano = calcularGolpe((*enemigo).danoBase, (*estado).defensa, &esquivado, &critico);
 
-    (*estado).hpActual = (*estado).hpActual - dano;
-    if((*estado).hpActual < 0){
-        (*estado).hpActual = 0;
+    if(esquivado){
+        printf(" %s te ataca, pero esquivas el golpe!\n", (*enemigo).nombreEnemigo);
+    } else {
+        (*estado).hpActual = (*estado).hpActual - dano;
+        if((*estado).hpActual < 0){
+            (*estado).hpActual = 0;
+        }
+        if(critico){
+            printf(" GOLPE CRITICO! ");
+        }
+        printf(" %s te ataca y te hace %d de dano.\n", (*enemigo).nombreEnemigo, dano);
     }
-    printf(" %s te ataca y te hace %d de dano.\n", (*enemigo).nombreEnemigo, dano);
 }
 
-/* Combate por turnos. Cada accion del jugador (atacar, usar la mochila
- * o intentar huir) consume el turno y luego ataca el enemigo, salvo que
- * este ya haya muerto o el jugador haya escapado. Entrar a la mochila
- * y volver atras sin usar ni soltar nada no consume turno (se detecta
- * porque la cantidad de objetos no cambia). El combate termina cuando
- * muere el jugador, muere el enemigo o el jugador huye. */
+/* Combate por turnos. Cada accion del jugador (atacar, usar la mochila o intentar huir) consume el turno y luego ataca el enemigo, salvo que
+este ya haya muerto o el jugador haya escapado. Entrar a la mochila y volver atras sin usar ni soltar nada no consume turno
+(se detecta porque la cantidad de objetos no cambia). El combate termina cuando muere el jugador, muere el enemigo o el jugador huye. */
 void iniciarCombate(EstadoJuego *estado, Entidad *enemigo){
     int huyo = 0;
-    int opcion, dano, objetosAntes, turnoConsumido;
+    int opcion, dano, objetosAntes, turnoConsumido, esquivado, critico;
 
     printf("\n *** COMBATE contra %s (%s) ***\n",
         (*enemigo).nombreEnemigo, (*enemigo).tipo);
@@ -523,12 +569,19 @@ void iniciarCombate(EstadoJuego *estado, Entidad *enemigo){
         turnoConsumido = 1;
 
         if(opcion == 1){
-            dano = calcularDano((*estado).ataque, (*enemigo).defensaBase);
-            (*enemigo).vidaBase = (*enemigo).vidaBase - dano;
-            if((*enemigo).vidaBase < 0){
-                (*enemigo).vidaBase = 0;
+            dano = calcularGolpe((*estado).ataque, (*enemigo).defensaBase, &esquivado, &critico);
+            if(esquivado){
+                printf(" Atacas a %s, pero esquiva el golpe!\n", (*enemigo).nombreEnemigo);
+            } else {
+                (*enemigo).vidaBase = (*enemigo).vidaBase - dano;
+                if((*enemigo).vidaBase < 0){
+                    (*enemigo).vidaBase = 0;
+                }
+                if(critico){
+                    printf(" GOLPE CRITICO! ");
+                }
+                printf(" Atacas a %s y le haces %d de dano.\n", (*enemigo).nombreEnemigo, dano);
             }
-            printf(" Atacas a %s y le haces %d de dano.\n", (*enemigo).nombreEnemigo, dano);
         } else if(opcion == 2){
             objetosAntes = (*estado).espacioInventarioActual;
             usarObjeto(estado);
@@ -549,8 +602,7 @@ void iniciarCombate(EstadoJuego *estado, Entidad *enemigo){
     }
 }
 
-/* XP que da un enemigo: la mitad de su vida base mas su dano base.
- * Se calcula con la copia original del enemigo (antes del combate). */
+/* XP que da un enemigo: la mitad de su vida base mas su dano base. */
 int calcularExperiencia(Entidad enemigo){
     return enemigo.vidaBase / 2 + enemigo.danoBase;
 }
@@ -609,8 +661,7 @@ void otorgarRecompensa(EstadoJuego *estado, Objeto catalogo[], int total_objetos
  *  MODULO 4: GESTION DE RECURSOS
  * =================================================================== */
 
-/* Muestra el contenido de la mochila (numerado desde 1), con el efecto
- * y el valor de cada objeto, y los atributos actuales del jugador. */
+/* Muestra el contenido de la mochila (numerado desde 1), con el efecto y el valor de cada objeto, y los atributos actuales del jugador. */
 void mostrarMochila(EstadoJuego *estado){
     int i;
 
@@ -625,8 +676,7 @@ void mostrarMochila(EstadoJuego *estado){
     printf(" (0) Volver\n");
 }
 
-/* Quita el objeto de la posicion indicada (base 0) corriendo hacia la
- * izquierda los que le siguen, para que la mochila no quede con huecos. */
+/* Quita el objeto de la posicion indicada (base 0) corriendo hacia la izquierda los que le siguen, para que la mochila no quede con huecos. */
 void eliminarObjetoMochila(EstadoJuego *estado, int indice){
     int i;
 
@@ -641,10 +691,8 @@ void eliminarObjetoMochila(EstadoJuego *estado, int indice){
  *   Cura_Max     : recupera todo el HP hasta el maximo
  *   Buff_Dano    : sube el ataque de forma permanente en fuerzaValor
  *   Buff_Defensa : sube la defensa de forma permanente en fuerzaValor
- * Para el buff de dano solo se comparan los primeros 7 caracteres
- * ("Buff_Da") y asi funciona igual si el .txt dice Dano o Daño, sin
- * depender de la codificacion del archivo.
- * Devuelve 1 si el efecto se aplico y 0 si el tipo no se reconoce. */
+ * Para el buff de dano solo se comparan los primeros 7 caracteres ("Buff_Da") y asi funciona igual si el .txt dice Dano o Daño,
+ * sin depender de la codificacion del archivo. Devuelve 1 si el efecto se aplico y 0 si el tipo no se reconoce. */
 int aplicarEfecto(EstadoJuego *estado, Objeto objeto){
     int aplicado = 1;
     int curado;
@@ -677,10 +725,9 @@ int aplicarEfecto(EstadoJuego *estado, Objeto objeto){
     return aplicado;
 }
 
-/* Menu de la mochila. El jugador elige un objeto y luego decide si lo
- * usa o lo suelta (o cancela y vuelve a la lista); con 0 sale sin hacer
- * nada. Termina tras usar o soltar un objeto, o al volver atras. Usar
- * un objeto suma a objetosConsumidos; soltarlo no. */
+/* Menu de la mochila. El jugador elige un objeto y luego decide si lo usa o lo suelta (o cancela y vuelve a la lista); 
+con 0 sale sin hacer nada. Termina tras usar o soltar un objeto, o al volver atras.
+Usar un objeto suma a objetosConsumidos; soltarlo no. */
 void usarObjeto(EstadoJuego *estado){
     int terminado = 0;
     int seleccion, accion;
@@ -741,9 +788,9 @@ void borrarPartidaGuardada(void){
  *   linea 2: pisoActual pisosTotales cuartoActual cuartosPorPiso
  *   linea 3: espacioInventarioActual espacioInventarioLimite
  *   linea 4: enemigosDerrotados objetosConsumidos cuartosExplorados
- *   luego, por cada objeto de la mochila, dos lineas:
- *     nombre (puede tener espacios)
- *     id fuerzaValor efecto */
+luego, por cada objeto de la mochila, dos lineas:
+    nombre (puede tener espacios)
+    id fuerzaValor efecto */
 void guardarPartida(EstadoJuego estado){
     FILE *archivo = fopen(ARCHIVO_PARTIDA, "w");
     int i;
@@ -771,10 +818,8 @@ void guardarPartida(EstadoJuego estado){
     printf(" Partida guardada.\n");
 }
 
-/* Lee ARCHIVO_PARTIDA y reanuda la partida. Devuelve 1 si se cargo bien
- * y 0 si el archivo no existe o esta danado. Se lee primero a un estado
- * temporal y solo si todo es valido se copia a *estado, asi un archivo
- * corrupto no deja la partida a medias. */
+/* Lee ARCHIVO_PARTIDA y reanuda la partida. Devuelve 1 si se cargo bien y 0 si el archivo no existe o esta danado. Se lee primero a un estado
+temporal y solo si todo es valido se copia a *estado, asi un archivo corrupto no deja la partida a medias. */
 int cargarPartida(EstadoJuego *estado){
     FILE *archivo = fopen(ARCHIVO_PARTIDA, "r");
     EstadoJuego temp;
@@ -824,13 +869,10 @@ int cargarPartida(EstadoJuego *estado){
     return valido;
 }
 
-/* Pide el nombre del explorador por consola (acepta espacios) y no
- * continua hasta recibir uno no vacio. El caracter '|' se cambia por un
- * espacio porque se usa como separador en highscore.txt. Si la entrada
- * se termina, usa el nombre "Anonimo". */
+/* Pide el nombre del explorador por consola (acepta espacios) y no continua hasta recibir uno no vacio. El caracter '|' se cambia por un
+espacio porque se usa como separador en highscore.txt. Si la entrada se termina, usa el nombre "Anonimo". */
 void pedirNombre(char destino[], int tamano){
-    int i;
-    int listo = 0;
+    int i, listo = 0;
 
     while(!listo){
         printf("\n Ingresa tu nombre de explorador: ");
@@ -849,12 +891,10 @@ void pedirNombre(char destino[], int tamano){
     }
 }
 
-/* Pide el nombre y agrega un registro al final de highscore.txt (modo
- * append, conserva los jugadores anteriores). Una linea por partida:
- *   Nombre | Resultado | Piso P | Cuartos C | Enemigos E | Objetos O |
- *   Nivel N | HP H | ATK A | DEF D
- * En una victoria pisoActual queda uno por encima del ultimo piso, por
- * eso el piso maximo se limita a pisosTotales. victoria vale 1 o 0. */
+/* Pide el nombre y agrega un registro al final de highscore.txt (modo append, conserva los jugadores anteriores). Una linea por partida:
+   Nombre | Resultado | Piso P | Cuartos C | Enemigos E | Objetos O |
+   Nivel N | HP H | ATK A | DEF D
+En una victoria pisoActual queda uno por encima del ultimo piso, por eso el piso maximo se limita a pisosTotales. victoria vale 1 o 0. */
 void registrarHighscore(EstadoJuego estado, int victoria){
     FILE *archivo;
     StringLargo nombre;
@@ -880,8 +920,7 @@ void registrarHighscore(EstadoJuego estado, int victoria){
     printf(" Resultado guardado en %s\n", ARCHIVO_HIGHSCORE);
 }
 
-/* Convierte una linea de highscore.txt en un registro. Devuelve 1 si la
- * linea tiene el formato esperado y 0 si no (se ignora). */
+/* Convierte una linea de highscore.txt en un registro. Devuelve 1 si la linea tiene el formato esperado y 0 si no (se ignora). */
 int leerRegistroHighscore(char linea[], Estadisticas *registro){
     int largoNombre = (int)strcspn(linea, "|");
     StringCorto resultado;
@@ -912,10 +951,8 @@ int leerRegistroHighscore(char linea[], Estadisticas *registro){
     return 1;
 }
 
-/* Lee highscore.txt y muestra por consola las ultimas
- * MAX_VICTORIAS_MOSTRAR victorias, de la mas reciente a la mas antigua.
- * Mientras recorre el archivo conserva solo las ultimas victorias vistas
- * (cuando se llena, descarta la mas antigua). */
+/* Lee highscore.txt y muestra por consola las ultimas MAX_VICTORIAS_MOSTRAR victorias, de la mas reciente a la mas antigua.
+Mientras recorre el archivo conserva solo las ultimas victorias vistas (cuando se llena, descarta la mas antigua). */
 void mostrarHighscores(void){
     FILE *archivo = fopen(ARCHIVO_HIGHSCORE, "r");
     char linea[MAX_LINEA];
@@ -954,5 +991,106 @@ void mostrarHighscores(void){
                 ultimas[i].enemigosDerrotados, ultimas[i].objetosConsumidos,
                 ultimas[i].hpFinal, ultimas[i].ataque, ultimas[i].defensa);
         }
+    }
+}
+
+/* ===================================================================
+ *  MODULO 6: MENUS Y FLUJO DEL JUEGO
+ * =================================================================== */
+
+/* Muestra el menu de inicio y devuelve la opcion elegida (1 a 4). La opcion 2 (cargar partida) solo se ofrece si existe un archivo de
+partida guardada; si el jugador la escribe sin que exista, se le avisa y se vuelve a preguntar. */
+int elegirOpcionMenuPrincipal(void){
+    int hayPartida = existePartidaGuardada();
+    int opcion;
+
+    do{
+        printf("\n************\n");
+        printf("(1) Empezar nueva partida\n");
+        if(hayPartida){
+            printf("(2) Cargar partida\n");
+        }
+        printf("(3) Highscores\n");
+        printf("(4) Salir\n");
+        printf("************\n");
+        opcion = leerOpcion(1, 4);
+
+        if(opcion == 2 && !hayPartida){
+            printf(" No hay ninguna partida guardada.\n");
+            opcion = 0;
+        }
+    } while(opcion == 0);
+
+    return opcion;
+}
+
+/* Resumen de la situacion del jugador antes de cada decision fuera de combate. */
+void mostrarEstado(EstadoJuego *estado){
+    printf("\n--------------------------------------------------\n");
+    printf(" Nivel %d (XP %d/%d) | HP %d/%d | ATK %d | DEF %d\n",
+        (*estado).nivel, (*estado).experiencia,
+        umbralExperiencia((*estado).nivel),
+        (*estado).hpActual, (*estado).hpLimite,
+        (*estado).ataque, (*estado).defensa);
+    printf(" Piso %d de %d | Cuartos superados: %d de %d | Mochila %d/%d\n",
+        (*estado).pisoActual, (*estado).pisosTotales,
+        (*estado).cuartoActual, cuartosEnPiso(estado),
+        (*estado).espacioInventarioActual, (*estado).espacioInventarioLimite);
+    printf("--------------------------------------------------\n");
+}
+
+/* Menu fuera de combate: avanzar, revisar la mochila o guardar y salir. Se repite hasta que la partida termina por victoria o derrota,
+o el jugador la suspende. Devuelve RESULTADO_VICTORIA, RESULTADO_DERROTA o RESULTADO_SUSPENDIDA. */
+int jugarPartida(EstadoJuego *estado, Entidad bestiario[], int total_enemigos,
+                 Objeto catalogo[], int total_objetos){
+    int terminada = 0;
+    int resultado = RESULTADO_SUSPENDIDA;
+    int opcion;
+
+    while(!terminada){
+        mostrarEstado(estado);
+        printf(" (1) Avanzar al siguiente cuarto\n");
+        printf(" (2) Revisar mochila\n");
+        printf(" (3) Guardar y salir\n");
+        opcion = leerOpcion(1, 3);
+
+        if(opcion == 1){
+            avanzarCuarto(estado, bestiario, total_enemigos, catalogo, total_objetos);
+            if((*estado).hpActual <= 0){
+                resultado = RESULTADO_DERROTA;
+                terminada = 1;
+            } else if((*estado).pisoActual > (*estado).pisosTotales){
+                resultado = RESULTADO_VICTORIA;
+                terminada = 1;
+            }
+        } else if(opcion == 2){
+            usarObjeto(estado);
+        } else {
+            guardarPartida(*estado);
+            terminada = 1;
+        }
+    }
+    return resultado;
+}
+
+/* Cierra una partida. Si fue suspendida no hace nada (el guardado ya esta hecho).
+Si termino en victoria o derrota muestra el resumen, registra el highscore y elimina el archivo de partida guardada. */
+void terminarPartida(EstadoJuego *estado, int resultado){
+    if(resultado != RESULTADO_SUSPENDIDA){
+        printf("\n==================================================\n");
+        if(resultado == RESULTADO_VICTORIA){
+            printf("                    VICTORIA\n");
+        } else {
+            printf("                    DERROTA\n");
+        }
+        printf("==================================================\n");
+        printf(" Nivel %d | HP %d/%d | ATK %d | DEF %d\n", (*estado).nivel,
+            (*estado).hpActual, (*estado).hpLimite, (*estado).ataque, (*estado).defensa);
+        printf(" Enemigos derrotados: %d | Objetos consumidos: %d | Cuartos superados: %d\n",
+            (*estado).enemigosDerrotados, (*estado).objetosConsumidos,
+            (*estado).cuartosExplorados);
+
+        registrarHighscore(*estado, resultado == RESULTADO_VICTORIA);
+        borrarPartidaGuardada();
     }
 }
