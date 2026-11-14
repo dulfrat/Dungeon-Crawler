@@ -1,10 +1,22 @@
-Rata Ruinas
+Rata Gorda
 1 20 5 0 Comun
 Automata Dañado
 2 35 3 10 Comun
-Cazador Sombras
+Cazador de Sombras
 3 15 12 2 Comun
 Guardian Nucleo
 4 50 25 15 Raro
 Espectro Anciano
 5 70 18 10 Raro
+Bruja esquizofrenica
+6 40 8 10 Comun
+Zombie
+7 40 10 10 Comun
+Zombie obrero
+8 50 12 10 Comun
+Tarantula gigante
+9 45 9 10 Comun
+Golem rocoso
+10 100 20 10 Raro
+Golem de magma
+11 80 25 10 Raro

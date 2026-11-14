@@ -1,10 +1,20 @@
-Pocion menor
-1 25 Cura_Vida
-Pocion Mayor
+Pocion pequeña
+1 20 Cura_Vida
+Pocion mayor
 2 50 Cura_Vida
-Cristal Fuerza
-3 3 Buff_Daño
-Placas Chatarra
-4 2 Buff_Defensa
-Elixir Nucleo
-5 100 Cura_Max
+Hiperpocion
+3 80 Cura_Vida
+Cristal de Fuerza
+4 3 Buff_Daño
+Placas de Chatarra
+5 2 Buff_Defensa
+Elixir
+6 100 Cura_Max
+Medallon heroico
+7 8 Buff_Defensa
+Piedra de afilar
+8 4 Buff_Daño
+Baya en dudoso estado
+9 5 Cura_Vida
+Bola de nieve
+10 10 Cura_Vida
