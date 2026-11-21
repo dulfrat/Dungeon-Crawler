@@ -1,22 +1,12 @@
-Rata Gorda
-1 20 5 0 Comun
-Automata Dañado
-2 35 3 10 Comun
-Cazador de Sombras
-3 15 12 2 Comun
-Guardian Nucleo
-4 50 25 15 Raro
-Espectro Anciano
-5 70 18 10 Raro
-Bruja esquizofrenica
-6 40 8 10 Comun
-Zombie
-7 40 10 10 Comun
-Zombie obrero
-8 50 12 10 Comun
-Tarantula gigante
-9 45 9 10 Comun
-Golem rocoso
-10 100 20 10 Raro
-Golem de magma
-11 80 25 10 Raro
+1 Rata_Gorda 20 5 0 Comun
+2 Automata_Dañado 35 3 10 Comun
+3 Cazador_de_Sombras 15 12 2 Comun
+4 Guardian_Nucleo 50 25 15 Raro
+5 Espectro_Anciano 70 18 10 Raro
+6 Bruja_esquizofrenica 40 8 10 Comun
+7 Zombie 40 10 10 Comun
+8 Zombie_obrero 50 12 10 Comun
+9 Tarantula_gigante 45 9 10 Comun
+10 Golem_rocoso 100 20 10 Raro
+11 Golem_de_magma 80 25 10 Raro
+12 Nucleo_Corrupto 340 44 22 Raro

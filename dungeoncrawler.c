@@ -32,6 +32,9 @@
 #define HUIDA_POR_PUNTO    3   /* % que suma/resta cada punto de diferencia */
 #define HUIDA_MIN         10   /* % minimo de huir */
 #define HUIDA_MAX         90   /* % maximo de huir */
+#define HUIDA_CURA_COMUN  50   /* % de la vida maxima que se recupera al huir de un enemigo Comun */
+#define HUIDA_CURA_RARO   25   /* % de la vida maxima que se recupera al huir de un enemigo Raro */
+#define TIRADAS_DANO       8   /* cantidad de "tiradas" de dano posibles en cada golpe */
 #define CRITICO_UNA_DE     8   /* golpe critico: 1 de cada 8 (12.5%) */
 #define CRITICO_NUM        3   /* el critico multiplica el daño por 3/2 = x1.5 */
 #define CRITICO_DEN        2
@@ -89,11 +92,13 @@ typedef struct {
 void cargarConfiguracion(EstadoJuego *estado);
 void cargarBestiario(Entidad bestiario[], int *total_enemigos);
 void cargarObjetos(Objeto catalogo[], int *total_objetos);
-int leerLineaNoVacia(FILE *archivo, char destino[], int tamano);
+void reemplazarCaracter(char texto[], char viejo, char nuevo);
 
 /* Modulo 2: Logica de Exploracion y Navegacion */
 void avanzarCuarto(EstadoJuego *estado, Entidad bestiario[], int total_enemigos, Objeto catalogo[], int total_objetos);
 Entidad seleccionarEnemigo(Entidad bestiario[], int total_enemigos, int es_cuarto_final);
+int indiceJefeFinal(Entidad bestiario[], int total_enemigos);
+Entidad seleccionarJefeFinal(Entidad bestiario[], int total_enemigos);
 int cuartosEnPiso(EstadoJuego *estado);
 void revisarProgresoPiso(EstadoJuego *estado, int totalCuartos);
 
@@ -102,6 +107,7 @@ void iniciarCombate(EstadoJuego *estado, Entidad *enemigo);
 int calcularDano(int ataque_atacante, int defensa_defensor);
 int sucedeUnaDe(int n);
 int calcularGolpe(int ataque_atacante, int defensa_defensor, int *esquivado, int *critico);
+int aplicarTiradaDano(int dano);
 void otorgarRecompensa(EstadoJuego *estado, Objeto catalogo[], int total_objetos, char tipo_enemigo[]);
 void verificarSubidaNivel(EstadoJuego *estado);
 int umbralExperiencia(int nivel);
@@ -242,25 +248,21 @@ void cargarConfiguracion(EstadoJuego *estado){
     (*estado).cuartosExplorados = 0;
 }
 
-/* lee la siguiente linea no vacia del archivo y le quita el salto de linea. Permite leer nombres con espacios (ej. "Rata Ruinas").
-Devuelve 1 si leyo una linea y 0 si llego al fin del archivo. */
-int leerLineaNoVacia(FILE *archivo, char destino[], int tamano){
-    int leida = 0;
+/* Cambia en un texto cada caracter viejo por el nuevo. Se usa para convertir los guiones bajos de los nombres en espacios
+al leer los archivos (ej. "Rata_Gorda" se muestra como "Rata Gorda") y los espacios en guiones bajos al guardar la partida. */
+void reemplazarCaracter(char texto[], char viejo, char nuevo){
+    int i;
 
-    while(!leida && fgets(destino, tamano, archivo) != NULL){
-        /* quita el salto de linea o retorno de carro del final */
-        destino[strcspn(destino, "\r\n")] = '\0';
-        if(strlen(destino) > 0){
-            leida = 1;
+    for(i = 0; texto[i] != '\0'; i++){
+        if(texto[i] == viejo){
+            texto[i] = nuevo;
         }
     }
-    return leida;
 }
 
-/*Lee bestiario.txt. Cada enemigo ocupa dos lineas:
- *   linea 1: Nombre (puede tener espacios)
- *   linea 2: [ID] [Vida] [Dano] [Defensa] [Tipo]
-La cantidad de enemigos leidos se devuelve por referencia. */
+/*Lee bestiario.txt. Cada enemigo ocupa una linea:
+ *   [ID] [Nombre] [Vida] [Dano] [Defensa] [Tipo]
+Los guiones bajos del nombre se cambian por espacios. La cantidad de enemigos leidos se devuelve por referencia. */
 void cargarBestiario(Entidad bestiario[], int *total_enemigos){
     FILE *archivo = fopen("bestiario.txt", "r");
     int i = 0;
@@ -272,24 +274,23 @@ void cargarBestiario(Entidad bestiario[], int *total_enemigos){
     }
 
     while(i < MAX_ENEMIGOS &&
-          leerLineaNoVacia(archivo, bestiario[i].nombreEnemigo,
-                           sizeof(bestiario[i].nombreEnemigo)) &&
-          fscanf(archivo, "%d %d %d %d %14s",
+          fscanf(archivo, "%d %99s %d %d %d %14s",
             &(bestiario[i].idEnemigo),
+            bestiario[i].nombreEnemigo,
             &(bestiario[i].vidaBase),
             &(bestiario[i].danoBase),
             &(bestiario[i].defensaBase),
-            bestiario[i].tipo) == 5){
+            bestiario[i].tipo) == 6){
+        reemplazarCaracter(bestiario[i].nombreEnemigo, '_', ' ');
         i++;
     }
     *total_enemigos = i;
     fclose(archivo);
 }
 
-/*Lee objetos.txt. Cada objeto ocupa dos lineas:
- * linea 1: Nombre (puede tener espacios)
- * linea 2: [ID] [Fuerza/Valor] [Tipo_Efecto]
-La cantidad de objetos leidos se devuelve por referencia. */
+/*Lee objetos.txt. Cada objeto ocupa una linea:
+ * [ID] [Nombre] [Fuerza/Valor] [Tipo_Efecto]
+Los guiones bajos del nombre se cambian por espacios. La cantidad de objetos leidos se devuelve por referencia. */
 void cargarObjetos(Objeto catalogo[], int *total_objetos){
     FILE *archivo = fopen("objetos.txt", "r");
     int i = 0;
@@ -301,12 +302,12 @@ void cargarObjetos(Objeto catalogo[], int *total_objetos){
     }
 
     while(i < MAX_OBJETOS &&
-          leerLineaNoVacia(archivo, catalogo[i].nombreObjeto,
-                           sizeof(catalogo[i].nombreObjeto)) &&
-          fscanf(archivo, "%d %d %14s",
+          fscanf(archivo, "%d %99s %d %14s",
             &(catalogo[i].idObjeto),
+            catalogo[i].nombreObjeto,
             &(catalogo[i].fuerzaValor),
-            catalogo[i].efecto) == 3){
+            catalogo[i].efecto) == 4){
+        reemplazarCaracter(catalogo[i].nombreObjeto, '_', ' ');
         i++;
     }
     *total_objetos = i;
@@ -336,15 +337,18 @@ int cuartosEnPiso(EstadoJuego *estado){
 
 /* Elige al azar un enemigo del bestiario: de tipo Raro si es el cuarto final del piso y de tipo Comun en los demas cuartos.
 Devuelve una copia del enemigo, asi el combate puede modificar su vida sin alterar el bestiario. Si no existe ningun enemigo del tipo buscado,
-elige cualquiera para que el juego no se bloquee. */
+elige cualquiera para que el juego no se bloquee.
+El jefe final (el Raro de mas vida, ver indiceJefeFinal) no sale en los cuartos finales de los pisos normales, salvo que sea el unico Raro. */
 Entidad seleccionarEnemigo(Entidad bestiario[], int total_enemigos, int es_cuarto_final){
     int indicesValidos[MAX_ENEMIGOS];
     int contador = 0;
     int i;
 
+    int jefe = indiceJefeFinal(bestiario, total_enemigos);
+
     for(i = 0; i < total_enemigos; i++){
         if(es_cuarto_final){
-            if(strcmp(bestiario[i].tipo, "Raro") == 0){
+            if(strcmp(bestiario[i].tipo, "Raro") == 0 && i != jefe){
                 indicesValidos[contador] = i;
                 contador++;
             }
@@ -356,23 +360,55 @@ Entidad seleccionarEnemigo(Entidad bestiario[], int total_enemigos, int es_cuart
         }
     }
 
+    if(contador == 0 && es_cuarto_final && jefe != -1){
+        return bestiario[jefe];   /* el unico Raro del bestiario es el jefe final */
+    }
     if(contador == 0){
         return bestiario[rand() % total_enemigos];
     }
     return bestiario[indicesValidos[rand() % contador]];
 }
 
+/* Devuelve la posicion del jefe final: el enemigo Raro con mas vida base (si hay empate, el primero del archivo).
+Devuelve -1 si el bestiario no tiene ningun Raro. */
+int indiceJefeFinal(Entidad bestiario[], int total_enemigos){
+    int i;
+    int jefe = -1;
+
+    for(i = 0; i < total_enemigos; i++){
+        if(strcmp(bestiario[i].tipo, "Raro") == 0){
+            if(jefe == -1 || bestiario[i].vidaBase > bestiario[jefe].vidaBase){
+                jefe = i;
+            }
+        }
+    }
+    return jefe;
+}
+
+/* Enemigo del ultimo cuarto del ultimo piso: una copia del jefe final. Si no hay ningun Raro, elige cualquiera para que el juego no se bloquee. */
+Entidad seleccionarJefeFinal(Entidad bestiario[], int total_enemigos){
+    int jefe = indiceJefeFinal(bestiario, total_enemigos);
+
+    if(jefe == -1){
+        jefe = rand() % total_enemigos;
+    }
+    return bestiario[jefe];
+}
+
 /* Avanza al siguiente cuarto del piso actual, genera su enemigo y lanza el combate. Segun el resultado:
  - el jugador murio: no se hace nada mas (derrota);
  - el enemigo murio: se otorgan XP y botin, se cuenta el cuarto como explorado y se revisa si el piso quedo completo;
- - el jugador huyo: el cuarto NO se supera, se retrocede el contador para que siga pendiente. */
+ - el jugador huyo: el cuarto NO se supera, se retrocede el contador para que siga pendiente, y se recupera vida
+   (HUIDA_CURA_COMUN % de la vida maxima, o HUIDA_CURA_RARO % si el enemigo era Raro). */
 void avanzarCuarto(EstadoJuego *estado, Entidad bestiario[], int total_enemigos, Objeto catalogo[], int total_objetos){
     int totalCuartos = cuartosEnPiso(estado);
-    int es_cuarto_final;
+    int es_cuarto_final, es_jefe_final;
+    int porcentaje, curado;
     Entidad enemigo, original;
 
     (*estado).cuartoActual++;
     es_cuarto_final = ((*estado).cuartoActual == totalCuartos);
+    es_jefe_final = (es_cuarto_final && (*estado).pisoActual == (*estado).pisosTotales);
 
     printf("\n==================================================\n");
     printf(" Piso %d de %d | Cuarto %d de %d\n",
@@ -380,10 +416,19 @@ void avanzarCuarto(EstadoJuego *estado, Entidad bestiario[], int total_enemigos,
         (*estado).cuartoActual, totalCuartos);
     printf("==================================================\n");
 
-    enemigo = seleccionarEnemigo(bestiario, total_enemigos, es_cuarto_final);
+    if(es_jefe_final){
+        enemigo = seleccionarJefeFinal(bestiario, total_enemigos);
+    } else {
+        enemigo = seleccionarEnemigo(bestiario, total_enemigos, es_cuarto_final);
+    }
     original = enemigo;   /* copia intacta: el combate modifica la vida de enemigo */
 
-    if(es_cuarto_final){
+    if(es_jefe_final){
+        printf("Se escuchan ruidos extraños a lo lejos...\n\n");
+        printf("==================================================\n");
+        printf("EL JEFE FINAL DE LA MAZMORRA TE ESPERA!\n");
+        printf("\n==================================================\n");
+    } else if(es_cuarto_final){
         printf(" Un enemigo RARO bloquea la salida del piso!\n");
     } else {
         printf(" Un enemigo ha aparecido en el camino!\n");
@@ -404,7 +449,18 @@ void avanzarCuarto(EstadoJuego *estado, Entidad bestiario[], int total_enemigos,
         } else {
             /* el jugador huyo */
             (*estado).cuartoActual--;
-            printf(" Escapas del cuarto, pero el camino sigue bloqueado.\n");
+            if(strcmp(original.tipo, "Raro") == 0){
+                porcentaje = HUIDA_CURA_RARO;
+            } else {
+                porcentaje = HUIDA_CURA_COMUN;
+            }
+            curado = (*estado).hpLimite * porcentaje / 100;
+            if((*estado).hpActual + curado > (*estado).hpLimite){
+                curado = (*estado).hpLimite - (*estado).hpActual;
+            }
+            (*estado).hpActual = (*estado).hpActual + curado;
+            printf(" Escapas del cuarto y recuperas %d HP (%d/%d), pero el camino sigue bloqueado.\n",
+                curado, (*estado).hpActual, (*estado).hpLimite);
         }
     }
 }
@@ -484,9 +540,9 @@ int sucedeUnaDe(int n){
 }
 
 /* Resuelve un golpe completo. Primero el defensor puede esquivarlo (1 de cada ESQUIVA_UNA_DE): en ese caso no hay dano. Si no lo esquiva,
-se calcula el dano normal y el atacante puede acertar un critico (1 de cada CRITICO_UNA_DE) que lo multiplica por x1.5. El critico se
-redondea hacia arriba para que siempre se note (1 pasa a 2). Devuelve el dano y avisa por referencia si hubo esquiva o critico. 
-Sirve igual para el jugador y para el enemigo. */
+se calcula el dano normal, se le aplica la tirada de dano (aplicarTiradaDano) y el atacante puede acertar un critico (1 de cada CRITICO_UNA_DE)
+que lo multiplica por x1.5. El critico se redondea hacia arriba para que siempre se note (1 pasa a 2). Devuelve el dano y avisa por referencia
+si hubo esquiva o critico. Sirve igual para el jugador y para el enemigo. */
 int calcularGolpe(int ataque_atacante, int defensa_defensor, int *esquivado, int *critico){
     int dano = 0;
 
@@ -495,10 +551,25 @@ int calcularGolpe(int ataque_atacante, int defensa_defensor, int *esquivado, int
 
     if(!(*esquivado)){
         dano = calcularDano(ataque_atacante, defensa_defensor);
+        dano = aplicarTiradaDano(dano);
         *critico = sucedeUnaDe(CRITICO_UNA_DE);
         if(*critico){
             dano = (dano * CRITICO_NUM + CRITICO_DEN - 1) / CRITICO_DEN;
         }
+    }
+    return dano;
+}
+
+/* Tirada de dano, como en Pokemon: el dano base se multiplica por uno de TIRADAS_DANO factores muy parecidos, elegido al azar, asi un
+mismo golpe no hace siempre exactamente lo mismo. Los factores van de 93 % a 107 % y su promedio es 100 %, por lo que el balance no cambia.
+No se muestra en pantalla. El resultado se redondea al entero mas cercano y nunca baja de 1 (regla del dano minimo). */
+int aplicarTiradaDano(int dano){
+    int tiradas[TIRADAS_DANO] = {93, 95, 97, 99, 101, 103, 105, 107};
+    int porcentaje = tiradas[rand() % TIRADAS_DANO];
+
+    dano = (dano * porcentaje + 50) / 100;
+    if(dano < 1){
+        dano = 1;
     }
     return dano;
 }
@@ -788,11 +859,12 @@ void borrarPartidaGuardada(void){
  *   linea 2: pisoActual pisosTotales cuartoActual cuartosPorPiso
  *   linea 3: espacioInventarioActual espacioInventarioLimite
  *   linea 4: enemigosDerrotados objetosConsumidos cuartosExplorados
-luego, por cada objeto de la mochila, dos lineas:
-    nombre (puede tener espacios)
-    id fuerzaValor efecto */
+luego, por cada objeto de la mochila, una linea:
+    nombre id fuerzaValor efecto
+(los espacios del nombre se guardan como guiones bajos) */
 void guardarPartida(EstadoJuego estado){
     FILE *archivo = fopen(ARCHIVO_PARTIDA, "w");
+    StringLargo nombre;
     int i;
 
     if(archivo == NULL){
@@ -810,7 +882,9 @@ void guardarPartida(EstadoJuego estado){
         estado.objetosConsumidos, estado.cuartosExplorados);
 
     for(i = 0; i < estado.espacioInventarioActual; i++){
-        fprintf(archivo, "%s\n%d %d %s\n", estado.mochila[i].nombreObjeto,
+        strcpy(nombre, estado.mochila[i].nombreObjeto);
+        reemplazarCaracter(nombre, ' ', '_');
+        fprintf(archivo, "%s %d %d %s\n", nombre,
             estado.mochila[i].idObjeto, estado.mochila[i].fuerzaValor,
             estado.mochila[i].efecto);
     }
@@ -856,10 +930,12 @@ int cargarPartida(EstadoJuego *estado){
 
     /* leer los objetos de la mochila */
     for(i = 0; valido && i < temp.espacioInventarioActual; i++){
-        valido = leerLineaNoVacia(archivo, temp.mochila[i].nombreObjeto,
-                    sizeof(temp.mochila[i].nombreObjeto)) &&
-                 (fscanf(archivo, "%d %d %14s", &temp.mochila[i].idObjeto,
-                    &temp.mochila[i].fuerzaValor, temp.mochila[i].efecto) == 3);
+        valido = (fscanf(archivo, "%99s %d %d %14s", temp.mochila[i].nombreObjeto,
+                    &temp.mochila[i].idObjeto, &temp.mochila[i].fuerzaValor,
+                    temp.mochila[i].efecto) == 4);
+        if(valido){
+            reemplazarCaracter(temp.mochila[i].nombreObjeto, '_', ' ');
+        }
     }
     fclose(archivo);
 
